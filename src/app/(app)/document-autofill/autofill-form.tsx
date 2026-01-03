@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { useRouter } from "next/navigation";
 import { extractDataFromDocuments } from "@/ai/flows/extract-data-from-documents-for-autofill";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Sparkles, UploadCloud } from "lucide-react";
+import { Loader2, Sparkles, UploadCloud, CheckCircle } from "lucide-react";
+import { useUser, useFirestore } from "@/firebase";
+import { collection, doc, setDoc } from "firebase/firestore";
 import {
   Select,
   SelectContent,
@@ -62,7 +65,11 @@ export function AutofillForm() {
   const [document, setDocument] = useState<File | null>(null);
   const [template, setTemplate] = useState<TemplateKey>("buildingPermit");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
+  const { user } = useUser();
+  const firestore = useFirestore();
 
   const form = useForm();
   const activeTemplate = templates[template];
@@ -116,6 +123,55 @@ export function AutofillForm() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCreatePermit = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to submit an application.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const formData = form.getValues();
+      const permitId = doc(collection(firestore, `users/${user.uid}/permits`)).id;
+
+      const permitData = {
+        id: permitId,
+        projectName: formData.applicantName || formData.propertyOwner || "New Permit Application",
+        permitType: template === "buildingPermit" ? "Building" : "Electrical",
+        status: "In Review",
+        submittedDate: new Date().toISOString().split("T")[0],
+        city: formData.projectAddress || formData.siteAddress || "Unknown Location",
+        // Store all other fields as metadata if needed, but for now we map to the main permit type
+        ...formData
+      };
+
+      await setDoc(
+        doc(firestore, `users/${user.uid}/permits`, permitId),
+        permitData
+      );
+
+      toast({
+        title: "Application Submitted",
+        description: "Your permit application has been successfully submitted.",
+      });
+
+      router.push("/dashboard");
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Submission Failed",
+        description: "Could not submit the application. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -187,6 +243,27 @@ export function AutofillForm() {
                     )}
                   />
                 ))}
+
+                <div className="pt-4">
+                  <Button
+                    type="button"
+                    onClick={handleCreatePermit}
+                    disabled={isSubmitting}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Submit Application
+                      </>
+                    )}
+                  </Button>
+                </div>
               </form>
             </Form>
           </CardContent>
