@@ -5,12 +5,12 @@ import {
   AlertTriangle,
   CalendarCheck,
   CheckCircle2,
+  DatabaseZap,
+  Loader2,
 } from "lucide-react";
 import {
   collection,
   query,
-  where,
-  type DocumentData,
 } from "firebase/firestore";
 
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,10 @@ import { type Permit } from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
+import { seedDatabase } from "@/lib/seed-db";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const statusConfig = {
   "In Review": {
@@ -56,6 +60,8 @@ const statusConfig = {
 export default function DashboardPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
+  const { toast } = useToast();
+  const [isSeeding, setIsSeeding] = useState(false);
 
   const permitsQuery = useMemoFirebase(() => {
     if (!user) return null;
@@ -69,6 +75,36 @@ export default function DashboardPage() {
     isLoading: isPermitsLoading,
     error: permitsError,
   } = useCollection<Permit>(permitsQuery);
+  
+  const handleSeedDatabase = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to seed the database.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSeeding(true);
+    try {
+      await seedDatabase(firestore, user.uid);
+      toast({
+        title: "Database Seeded",
+        description: "Your application has been populated with sample data.",
+      });
+      // Data will refresh automatically via the useCollection hook
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Seeding Failed",
+        description: "Could not seed the database. Check console for errors.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
 
   if (isUserLoading || isPermitsLoading) {
     return <DashboardSkeleton />;
@@ -81,7 +117,7 @@ export default function DashboardPage() {
       </div>
     );
   }
-
+  
   const stats = {
     inReview: permits?.filter((p) => p.status === "In Review").length ?? 0,
     approved: permits?.filter((p) => p.status === "Approved").length ?? 0,
@@ -146,6 +182,31 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+       {!permits || permits.length === 0 ? (
+          <Card>
+             <CardHeader>
+                <CardTitle>Welcome to PermitPilot!</CardTitle>
+                <CardDescription>
+                It looks like you don't have any data yet. Populate your application with sample permits and municipalities to get started.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Button onClick={handleSeedDatabase} disabled={isSeeding}>
+                    {isSeeding ? (
+                        <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Seeding...
+                        </>
+                    ) : (
+                        <>
+                        <DatabaseZap className="mr-2 h-4 w-4" />
+                        Seed Database
+                        </>
+                    )}
+                </Button>
+            </CardContent>
+          </Card>
+        ) : (
       <Card>
         <CardHeader>
           <CardTitle>Permit Status</CardTitle>
@@ -218,6 +279,7 @@ export default function DashboardPage() {
           </Table>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
