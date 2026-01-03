@@ -9,6 +9,8 @@ export type Permit = {
   city: string;
 };
 
+// This mock data is no longer the primary source for the dashboard,
+// but is kept for reference or fallback.
 export const mockPermits: Permit[] = [
   {
     id: 'PERMIT-001',
@@ -63,6 +65,8 @@ export type Municipality = {
     website: string;
 };
 
+// This mock data is no longer the primary source for the database page,
+// but is kept for reference or a seeding script.
 export const mockMunicipalities: Municipality[] = [
     { id: '1', city: 'New York', state: 'NY', permitProbabilityScore: 65, website: 'https://www.nyc.gov/site/buildings/index.page' },
     { id: '2', city: 'Los Angeles', state: 'CA', permitProbabilityScore: 72, website: 'https://www.ladbs.org/' },
