@@ -1,0 +1,172 @@
+/**
+ * Core Philosophy:
+ * This ruleset enforces a strict user-ownership security model. All user-generated
+ * content, such as permits and their associated documents, is nested within a
+ * `/users/{userId}` path. This ensures that users can only access their own data,
+ * providing strong security and privacy by default.
+ *
+ * Data Structure:
+ * The data is organized into two main types of collections:
+ * 1. User-Private Collections: All data created and owned by a user (permits,
+ *    checklists, documents) is stored in subcollections under `/users/{userId}`.
+ *    Access is granted by comparing the `userId` in the path with the authenticated
+ *    user's UID.
+ * 2. Public Collections: Top-level collections like `/municipalities` contain data
+ *    that is intended for public read access by all users. Writes to these
+ *    collections are disabled for clients and must be managed by a trusted
+ *    backend service.
+ *
+ * Key Security Decisions:
+ * - User Isolation: Users are strictly isolated from each other's data. It is
+ *   impossible for one user to read, write, or even list the data of another user.
+ * - No User Listing: The `/userProfiles` collection cannot be listed, preventing
+ *   the scraping of user information.
+ * - Public Data is Read-Only: The `/municipalities` collection is publicly readable
+ *   but completely locked down from client-side writes to ensure data integrity.
+ * - Path-Based Security: The rules heavily rely on the document path for
+ *   authorization, which is efficient and avoids costly `get()` calls to other
+ *   documents.
+ *
+ * Denormalization for Authorization:
+ * The data structure is designed to be self-sufficient for authorization. By placing
+ * all user-owned data under a path containing their user ID (e.g.,
+ * `/users/{userId}/permits/{permitId}`), we avoid the need to check for ownership fields
+ * within the document itself for read access. This makes rules simple, fast, and secure.
+ * For writes, we enforce that internal IDs (`userId`, `permitId`) match the IDs in
+ * the path to maintain relational integrity.
+ *
+ * Structural Segregation:
+ * The ruleset clearly segregates private user data (under `/users/{userId}`) from
+ * public application data (`/municipalities`). This separation is a core security
+ * principle that simplifies rules and prevents accidental data exposure, especially
+ * during list operations.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --------------------------------------------------------------------
+    // Helper Functions
+    // --------------------------------------------------------------------
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the authenticated user's UID matches the provided userId.
+     * This is the foundation of the user-ownership model.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Checks if the document exists and the user is the owner.
+     * CRITICAL: Used for all state-changing update and delete operations.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    // --------------------------------------------------------------------
+    // User Profiles (/userProfiles)
+    // --------------------------------------------------------------------
+
+    /**
+     * @description Users can create, read, and modify their own profile, but cannot see or list others.
+     * @path /userProfiles/{userId}
+     * @allow (create) An authenticated user with UID 'user_abc' creating their own profile at `/userProfiles/user_abc`.
+     * @deny (get) User 'user_abc' trying to read the profile at `/userProfiles/user_xyz`.
+     * @deny (list) Any user trying to list the `/userProfiles` collection.
+     * @principle Restricts access to a user's own data tree and prevents user enumeration.
+     */
+    match /userProfiles/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    // --------------------------------------------------------------------
+    // Municipalities (/municipalities)
+    // --------------------------------------------------------------------
+
+    /**
+     * @description Municipality data is public for any client to read, but cannot be modified.
+     * @path /municipalities/{municipalityId}
+     * @allow (get, list) Any user, signed in or not, can read municipality documents.
+     * @deny (create, update, delete) No client is allowed to write to this collection.
+     * @principle Protects public, shared data by making it read-only for clients.
+     */
+    match /municipalities/{municipalityId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // --------------------------------------------------------------------
+    // User Data Root (/users)
+    // --------------------------------------------------------------------
+
+    /**
+     * This is a grouping match for all user-specific subcollections. Direct
+     * interaction with a `/users/{userId}` document is disallowed.
+     */
+    match /users/{userId} {
+      allow read, write: if false;
+
+      /**
+       * @description A user can manage their own permits. Access is controlled entirely by the {userId} in the path.
+       * @path /users/{userId}/permits/{permitId}
+       * @allow (create) User 'user_abc' creating a new permit at `/users/user_abc/permits/permit_123`.
+       * @deny (get) User 'user_xyz' trying to read a permit at `/users/user_abc/permits/permit_123`.
+       * @deny (list) User 'user_xyz' trying to list permits under `/users/user_abc/permits`.
+       * @principle Enforces strict data ownership based on the document path.
+       */
+      match /permits/{permitId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isExistingOwner(userId);
+
+        /**
+         * @description A user can manage checklists belonging to their own permits.
+         * @path /users/{userId}/permits/{permitId}/checklists/{checklistId}
+         * @allow (list) User 'user_abc' listing checklists at `/users/user_abc/permits/permit_123/checklists`.
+         * @deny (get) User 'user_xyz' trying to get a checklist at `/users/user_abc/permits/permit_123/checklists/check_456`.
+         * @principle Inherits ownership from the parent path, ensuring data remains secure in nested collections.
+         */
+        match /checklists/{checklistId} {
+          allow get: if isOwner(userId);
+          allow list: if isOwner(userId);
+          allow create: if isOwner(userId) && request.resource.data.permitId == permitId;
+          allow update: if isExistingOwner(userId) && request.resource.data.permitId == resource.data.permitId;
+          allow delete: if isExistingOwner(userId);
+        }
+
+        /**
+         * @description A user can manage documents belonging to their own permits.
+         * @path /users/{userId}/permits/{permitId}/documents/{documentId}
+         * @allow (create) User 'user_abc' uploading a document to `/users/user_abc/permits/permit_123/documents/doc_789`.
+         * @deny (delete) User 'user_xyz' trying to delete a document at `/users/user_abc/permits/permit_123/documents/doc_789`.
+         * @principle Inherits ownership from the parent path, ensuring data remains secure in nested collections.
+         */
+        match /documents/{documentId} {
+          allow get: if isOwner(userId);
+          allow list: if isOwner(userId);
+          allow create: if isOwner(userId) && request.resource.data.permitId == permitId;
+          allow update: if isExistingOwner(userId) && request.resource.data.permitId == resource.data.permitId;
+          allow delete: if isExistingOwner(userId);
+        }
+      }
+    }
+  }
+}
