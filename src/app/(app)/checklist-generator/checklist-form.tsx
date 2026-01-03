@@ -31,9 +31,9 @@ export function ChecklistForm() {
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      setPhotos(filesArray);
+      setPhotos(prev => [...prev, ...filesArray]);
       const filePreviews = filesArray.map((file) => URL.createObjectURL(file));
-      setPhotoPreviews(filePreviews);
+      setPhotoPreviews(prev => [...prev, ...filePreviews]);
     }
   };
   
@@ -83,20 +83,22 @@ export function ChecklistForm() {
         <div className="grid gap-4">
           <div className="space-y-2">
             <Label htmlFor="photos">Project Photos</Label>
-            <div className="border-2 border-dashed border-muted-foreground/50 rounded-lg p-6 text-center">
-              <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
-              <p className="mt-4 text-sm text-muted-foreground">
-                Drag & drop photos here, or click to select files
-              </p>
-              <Input
-                id="photos"
-                type="file"
-                multiple
-                accept="image/*"
-                onChange={handlePhotoChange}
-                className="sr-only"
-              />
-            </div>
+            <Label htmlFor="photos-input" className="cursor-pointer">
+              <div className="border-2 border-dashed border-muted-foreground/50 rounded-lg p-6 text-center">
+                <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Drag & drop photos here, or click to select files
+                </p>
+              </div>
+            </Label>
+            <Input
+              id="photos-input"
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handlePhotoChange}
+              className="sr-only"
+            />
           </div>
 
           {photoPreviews.length > 0 && (
