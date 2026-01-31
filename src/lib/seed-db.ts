@@ -1,5 +1,5 @@
 "use server";
-import { collection, writeBatch, getDocs, Firestore } from "firebase/firestore";
+import { collection, writeBatch, getDocs, Firestore, doc } from "firebase/firestore";
 import { mockMunicipalities, mockPermits } from "./data";
 
 /**
@@ -17,7 +17,7 @@ export async function seedDatabase(firestore: Firestore, userId: string) {
   if (municipalitiesSnapshot.empty) {
     const municipalitiesBatch = writeBatch(firestore);
     mockMunicipalities.forEach((municipality) => {
-      const docRef = collection(firestore, "municipalities").doc(municipality.id);
+      const docRef = doc(collection(firestore, "municipalities"), municipality.id);
       municipalitiesBatch.set(docRef, municipality);
     });
     await municipalitiesBatch.commit();
@@ -33,7 +33,7 @@ export async function seedDatabase(firestore: Firestore, userId: string) {
     const permitsBatch = writeBatch(firestore);
     mockPermits.forEach((permit) => {
       // Note: In a real scenario, you'd likely want unique IDs, but for mock data this is okay.
-      const docRef = collection(firestore, `users/${userId}/permits`).doc(permit.id);
+      const docRef = doc(collection(firestore, `users/${userId}/permits`), permit.id);
       permitsBatch.set(docRef, permit);
     });
     await permitsBatch.commit();
