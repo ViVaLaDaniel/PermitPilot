@@ -69,9 +69,10 @@ export default function DatabasePage() {
         {isLoading && <DatabaseSkeleton />}
         {error && <p className="text-red-500">Error: {error.message}</p>}
         {!isLoading && !error && municipalities && (
-          <Table>
-            <TableHeader>
-              <TableRow>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
                 <TableHead>City</TableHead>
                 <TableHead>State</TableHead>
                 <TableHead>Permit Probability Score</TableHead>
@@ -98,8 +99,9 @@ export default function DatabasePage() {
                   </TableCell>
                 </TableRow>
               ))}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -108,9 +110,10 @@ export default function DatabasePage() {
 
 function DatabaseSkeleton() {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
           {[...Array(4)].map((_, i) => (
             <TableHead key={i}>
               <Skeleton className="h-5 w-24" />
@@ -128,7 +131,8 @@ function DatabaseSkeleton() {
             ))}
           </TableRow>
         ))}
-      </TableBody>
-    </Table>
+        </TableBody>
+      </Table>
+    </div>
   );
 }

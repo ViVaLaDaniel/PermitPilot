@@ -110,7 +110,7 @@ export function ChecklistForm() {
                     alt={`Photo preview ${index + 1}`}
                     width={150}
                     height={150}
-                    className="rounded-md object-cover aspect-square"
+                    className="rounded-md object-cover aspect-square w-full h-full"
                   />
                   <Button
                     type="button"
@@ -138,7 +138,7 @@ export function ChecklistForm() {
           />
         </div>
 
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

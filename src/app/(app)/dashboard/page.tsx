@@ -215,9 +215,10 @@ export default function DashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
                 <TableHead>Project Name</TableHead>
                 <TableHead>Permit Type</TableHead>
                 <TableHead>Status</TableHead>
@@ -275,8 +276,9 @@ export default function DashboardPage() {
                   </TableCell>
                 </TableRow>
               )}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
       )}
@@ -306,9 +308,10 @@ function DashboardSkeleton() {
           <Skeleton className="h-4 w-64" />
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
                 {[...Array(6)].map((_, i) => (
                   <TableHead key={i}>
                     <Skeleton className="h-5 w-20" />
@@ -326,8 +329,9 @@ function DashboardSkeleton() {
                   ))}
                 </TableRow>
               ))}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
