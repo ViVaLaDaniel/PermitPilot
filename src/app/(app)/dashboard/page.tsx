@@ -187,7 +187,7 @@ export default function DashboardPage() {
              <CardHeader>
                 <CardTitle>Welcome to PermitPilot!</CardTitle>
                 <CardDescription>
-                It looks like you don't have any data yet. Populate your application with sample permits and municipalities to get started.
+                It looks like you don&apos;t have any data yet. Populate your application with sample permits and municipalities to get started.
                 </CardDescription>
             </CardHeader>
             <CardContent>
