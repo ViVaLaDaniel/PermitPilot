@@ -19,6 +19,7 @@ export interface ChecklistItem {
   isRequired: boolean;
   documentId?: string; // Reference to Firebase Storage path
   validationMessage?: string;
+  extractedData?: Record<string, any>; // New field for AI-parsed data
 }
 
 export interface Permit {

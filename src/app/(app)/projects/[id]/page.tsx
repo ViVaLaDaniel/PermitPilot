@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useUser, useFirestore } from "@/firebase";
 import { projectService } from "@/firebase/projects";
 import { uploadDocument } from "@/firebase/storage";
+import { validateDocument } from "@/ai/flows/validate-document";
+import { exportPermitPackage } from "@/lib/export-package";
 import { Project, Permit, ChecklistItem, PermitStatus } from "@/lib/data";
 import { 
   Loader2, 
@@ -17,7 +19,12 @@ import {
   Clock, 
   AlertCircle,
   ChevronDown,
-  FileText
+  FileText,
+  Zap,
+  Maximize,
+  Home,
+  HardHat,
+  Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +58,7 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [uploadingItem, setUploadingItem] = useState<string | null>(null);
+  const [exportingPermit, setExportingPermit] = useState<string | null>(null);
 
   const loadProject = async () => {
     if (!user || !id) return;
@@ -75,20 +83,65 @@ export default function ProjectDetailPage() {
     else if (!isUserLoading && !user) router.push("/");
   }, [user, id, isUserLoading]);
 
+  const handleExport = async (permit: Permit) => {
+    if (!project) return;
+    setExportingPermit(permit.id);
+    try {
+      await exportPermitPackage(project, permit);
+      toast({ title: "Package Exported", description: "Your submission package has been downloaded." });
+    } catch (error: any) {
+      console.error(error);
+      toast({ 
+        title: "Export Failed", 
+        description: error.message || "Could not generate the package.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setExportingPermit(null);
+    }
+  };
+
   const handleFileUpload = async (permitId: string, item: ChecklistItem, file: File) => {
     if (!project) return;
     
     setUploadingItem(item.id);
     try {
-      const { path } = await uploadDocument(project.id, permitId, item.id, file);
+      const { url, path } = await uploadDocument(project.id, permitId, item.id, file);
       
       await projectService.updateChecklistItem(firestore, project.id, permitId, item.id, {
         status: 'UPLOADED',
         documentId: path
       });
 
-      toast({ title: "File Uploaded", description: `Successfully uploaded ${file.name}` });
-      await loadProject(); // Refresh to show new status
+      toast({ title: "File Uploaded", description: `Validating ${file.name} with AI...` });
+      
+      // Start AI Validation
+      const validation = await validateDocument({
+        documentUrl: url,
+        requirementLabel: item.label,
+        requirementDescription: item.description,
+        municipalityContext: `City: ${project.address.city}, Project: ${project.projectType}`
+      });
+
+      const newStatus = validation.isValid ? 'VALIDATED' : 'ERROR';
+      
+      await projectService.updateChecklistItem(firestore, project.id, permitId, item.id, {
+        status: newStatus,
+        validationMessage: validation.feedback,
+        extractedData: validation.extractedData
+      });
+
+      if (validation.isValid) {
+        toast({ title: "Document Validated", description: "AI confirmed the document looks correct." });
+      } else {
+        toast({ 
+          title: "Validation Issue", 
+          description: "AI found some problems. Check the feedback.",
+          variant: "destructive"
+        });
+      }
+
+      await loadProject(); 
     } catch (error) {
       console.error(error);
       toast({ title: "Upload Failed", description: "Could not upload document.", variant: "destructive" });
@@ -107,6 +160,23 @@ export default function ProjectDetailPage() {
   }
 
   if (!project) return null;
+
+  // Aggregate key metrics from all checklist items for the summary card
+  const summaryMetrics = project.permits.reduce((acc, permit) => {
+    permit.checklist.forEach(item => {
+      if (item.extractedData) {
+        Object.entries(item.extractedData).forEach(([key, value]) => {
+          const lowerKey = key.toLowerCase();
+          if (lowerKey.includes('area') || lowerKey.includes('sq ft')) acc.area = value;
+          if (lowerKey.includes('bedroom')) acc.bedrooms = value;
+          if (lowerKey.includes('bathroom')) acc.bathrooms = value;
+          if (lowerKey.includes('margin') || lowerKey.includes('compliance')) acc.energyMargin = value;
+          if (lowerKey.includes('coverage')) acc.coverage = value;
+        });
+      }
+    });
+    return acc;
+  }, { area: null, bedrooms: null, bathrooms: null, energyMargin: null, coverage: null } as any);
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-20">
@@ -128,6 +198,53 @@ export default function ProjectDetailPage() {
           <p className="text-sm text-muted-foreground">Created on</p>
           <p className="font-medium">{new Date(project.createdAt).toLocaleDateString()}</p>
         </div>
+      </div>
+
+      {/* Project Intelligence Summary */}
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+        <Card className="bg-primary/[0.03] border-primary/10 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-primary/70 mb-1">
+              <Maximize className="h-4 w-4" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Total Area</span>
+            </div>
+            <p className="text-2xl font-bold font-headline">{summaryMetrics.area || '—'}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Found in Plans</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-primary/[0.03] border-primary/10 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-primary/70 mb-1">
+              <Home className="h-4 w-4" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Unit Config</span>
+            </div>
+            <p className="text-2xl font-bold font-headline">
+              {summaryMetrics.bedrooms ? `${summaryMetrics.bedrooms}BR` : ''} 
+              {summaryMetrics.bathrooms ? ` / ${summaryMetrics.bathrooms}BA` : (summaryMetrics.bedrooms ? '' : '—')}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-1">From Floor Plan</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-primary/[0.03] border-primary/10 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-primary/70 mb-1">
+              <Zap className="h-4 w-4" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Energy Margin</span>
+            </div>
+            <p className="text-2xl font-bold font-headline">{summaryMetrics.energyMargin || '—'}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Title 24 Extract</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-primary/[0.03] border-primary/10 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-primary/70 mb-1">
+              <ClipboardList className="h-4 w-4" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Lot Coverage</span>
+            </div>
+            <p className="text-2xl font-bold font-headline">{summaryMetrics.coverage || '—'}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Site Plan Data</p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6">
@@ -173,18 +290,39 @@ export default function ProjectDetailPage() {
                         />
                       </div>
                       <span className="text-sm font-medium">{Math.round(progress)}% Complete</span>
+                      
+                      {(permit.status === 'READY_FOR_SUBMISSION' || permit.status === 'SUBMITTED' || permit.status === 'APPROVED') && (
+                        <Button 
+                          size="sm" 
+                          variant="default" 
+                          className="ml-4"
+                          onClick={() => handleExport(permit)}
+                          disabled={exportingPermit === permit.id}
+                        >
+                          {exportingPermit === permit.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="mr-2 h-4 w-4" />
+                          )}
+                          Export Package
+                        </Button>
+                      )}
                     </div>
 
                     <div className="grid gap-3">
                       {permit.checklist.map((item) => (
                         <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg border bg-background gap-4">
-                          <div className="flex items-start gap-3">
-                            {item.status === 'VALIDATED' || item.status === 'UPLOADED' ? (
+                          <div className="flex items-start gap-3 flex-1">
+                            {item.status === 'VALIDATED' ? (
                               <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+                            ) : item.status === 'ERROR' ? (
+                              <AlertCircle className="h-5 w-5 text-red-500 mt-0.5" />
+                            ) : item.status === 'UPLOADED' ? (
+                              <Clock className="h-5 w-5 text-blue-500 mt-0.5" />
                             ) : (
                               <div className="h-5 w-5 rounded-full border-2 mt-0.5" />
                             )}
-                            <div>
+                            <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium">{item.label}</span>
                                 {item.isRequired && (
@@ -192,6 +330,27 @@ export default function ProjectDetailPage() {
                                 )}
                               </div>
                               <p className="text-sm text-muted-foreground">{item.description}</p>
+                              
+                              {item.validationMessage && (
+                                <div className={`mt-2 p-2 rounded text-xs border ${
+                                  item.status === 'VALIDATED' 
+                                    ? 'bg-green-50 text-green-700 border-green-100' 
+                                    : 'bg-red-50 text-red-700 border-red-100'
+                                }`}>
+                                  <span className="font-bold">AI Review:</span> {item.validationMessage}
+                                </div>
+                              )}
+
+                              {item.extractedData && Object.keys(item.extractedData).length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {Object.entries(item.extractedData).map(([key, value]) => (
+                                    <div key={key} className="flex items-center bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-[10px]">
+                                      <span className="font-semibold mr-1 uppercase text-[8px] opacity-70">{key.replace(/([A-Z])/g, ' $1')}:</span>
+                                      <span>{String(value)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
 
