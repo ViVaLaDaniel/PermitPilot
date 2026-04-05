@@ -1,56 +1,69 @@
 'use server';
 
-/**
- * @fileOverview Generates a checklist of required permits based on project site photos and voice descriptions.
- *
- * - generatePermitChecklistFromPhotosAndVoice - A function that handles the permit checklist generation process.
- * - GeneratePermitChecklistInput - The input type for the generatePermitChecklistFromPhotosAndVoice function.
- * - GeneratePermitChecklistOutput - The return type for the generatePermitChecklistFromPhotosAndVoice function.
- */
-
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import laAduRules from '@/lib/knowledge/los-angeles-adu.json';
 
 const GeneratePermitChecklistInputSchema = z.object({
   photoDataUris: z
     .array(z.string())
     .describe(
-      "A list of photos of the project site, as data URIs that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>' for each image."
+      "A list of photos of the project site, as data URIs. Format: 'data:<mimetype>;base64,<encoded_data>'"
     ),
-  voiceDescription: z.string().describe('A voice description of the project site.'),
+  voiceDescription: z.string().describe('A description of the project site and scope.'),
 });
-export type GeneratePermitChecklistInput = z.infer<typeof GeneratePermitChecklistInputSchema>;
+
+const PermitRequirementSchema = z.object({
+  label: z.string(),
+  description: z.string(),
+  isRequired: z.boolean(),
+});
+
+const PermitSchema = z.object({
+  type: z.enum(['Building', 'Electrical', 'Plumbing', 'Mechanical']),
+  requirements: z.array(PermitRequirementSchema),
+});
 
 const GeneratePermitChecklistOutputSchema = z.object({
-  permitChecklist: z.array(z.string()).describe('A checklist of required permits.'),
+  projectName: z.string().describe('Suggested name for the project.'),
+  projectType: z.string().describe('Identified project type (e.g., ADU, Remodel).'),
+  municipalityId: z.string().describe('City identifier (e.g., los-angeles).'),
+  permits: z.array(PermitSchema).describe('The set of permits and requirements needed.'),
 });
-export type GeneratePermitChecklistOutput = z.infer<typeof GeneratePermitChecklistOutputSchema>;
 
-export async function generatePermitChecklistFromPhotosAndVoice(
-  input: GeneratePermitChecklistInput
-): Promise<GeneratePermitChecklistOutput> {
-  return generatePermitChecklistFromPhotosAndVoiceFlow(input);
-}
+export type GeneratePermitChecklistInput = z.infer<typeof GeneratePermitChecklistInputSchema>;
+export type GeneratePermitChecklistOutput = z.infer<typeof GeneratePermitChecklistOutputSchema>;
 
 const prompt = ai.definePrompt({
   name: 'generatePermitChecklistFromPhotosAndVoicePrompt',
   input: {schema: GeneratePermitChecklistInputSchema},
   output: {schema: GeneratePermitChecklistOutputSchema},
-  prompt: `You are an expert in identifying required permits for construction projects.
+  prompt: `You are a Permit Operations Expert for the City of Los Angeles. 
+  
+  Use the following LA ADU Municipality Rules as your SOLE SOURCE OF TRUTH for requirements:
+  ${JSON.stringify(laAduRules, null, 2)}
 
-  Based on the provided photos and voice description of the project site, generate a checklist of required permits.
+  Task:
+  1. Analyze the photos and description provided by the user.
+  2. Determine if the project is an ADU or a similar residential construction.
+  3. Map the project needs to the specific permits and requirements defined in the Rules above.
+  4. Suggest a professional project name.
 
-  Photos:
+  Constraints:
+  - Do NOT hallucinate requirements. Only use those listed in the Rules.
+  - Be specific. If photos show a kitchen, ensure Plumbing and Electrical are included.
+  
+  User Inputs:
+  - Photos:
   {{#each photoDataUris}}
   {{media url=this}}
   {{/each}}
+  - Description: {{{voiceDescription}}}
 
-  Voice Description: {{{voiceDescription}}}
-
-  Checklist:`, // the 'Checklist:' at the end asks for the output to be returned in that format
+  Generate the Permit Checklist:`,
 });
 
-const generatePermitChecklistFromPhotosAndVoiceFlow = ai.defineFlow(
+export const generatePermitChecklistFromPhotosAndVoice = ai.defineFlow(
   {
     name: 'generatePermitChecklistFromPhotosAndVoiceFlow',
     inputSchema: GeneratePermitChecklistInputSchema,

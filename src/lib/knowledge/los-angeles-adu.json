@@ -1,0 +1,67 @@
+{
+  "cityId": "los-angeles",
+  "cityName": "Los Angeles, CA",
+  "projects": [
+    {
+      "type": "ADU",
+      "description": "Accessory Dwelling Unit - New Construction or Conversion",
+      "requiredPermits": [
+        {
+          "type": "Building",
+          "requirements": [
+            {
+              "label": "Site Plan",
+              "description": "Plot plan showing entire property and proposed ADU footprint.",
+              "isRequired": true
+            },
+            {
+              "label": "Floor Plan",
+              "description": "Dimensioned layout of each room, windows, and doors.",
+              "isRequired": true
+            },
+            {
+              "label": "Elevations",
+              "description": "Exterior views of all four sides of the structure.",
+              "isRequired": true
+            },
+            {
+              "label": "Section Details",
+              "description": "Cross-section showing foundation, walls, and roof structure.",
+              "isRequired": true
+            },
+            {
+              "label": "Title 24 Energy Report",
+              "description": "Compliance certificate for energy efficiency standards.",
+              "isRequired": true
+            },
+            {
+              "label": "Structural Calculations",
+              "description": "Engineering analysis for foundation and framing.",
+              "isRequired": true
+            }
+          ]
+        },
+        {
+          "type": "Electrical",
+          "requirements": [
+            {
+              "label": "Single Line Diagram",
+              "description": "Schematic of the electrical system and panel upgrade if needed.",
+              "isRequired": true
+            }
+          ]
+        },
+        {
+          "type": "Plumbing",
+          "requirements": [
+            {
+              "label": "Plumbing Layout",
+              "description": "Plan showing waste and supply lines to city sewer/water.",
+              "isRequired": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

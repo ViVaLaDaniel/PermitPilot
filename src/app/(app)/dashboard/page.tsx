@@ -1,286 +1,117 @@
 "use client";
 
-import {
-  Activity,
-  AlertTriangle,
-  CalendarCheck,
-  CheckCircle2,
-  DatabaseZap,
-  Loader2,
-} from "lucide-react";
-import {
-  collection,
-  query,
-} from "firebase/firestore";
-
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { type Permit } from "@/lib/data";
-import { Button } from "@/components/ui/button";
-import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { useUser, useFirestore } from "@/firebase";
+import { projectService } from "@/firebase/projects";
 import { Skeleton } from "@/components/ui/skeleton";
-import { seedDatabase } from "@/lib/seed-db";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
-const statusConfig = {
-  "In Review": {
-    icon: Activity,
-    color: "bg-blue-500",
-  },
-  Approved: {
-    icon: CheckCircle2,
-    color: "bg-green-500",
-  },
-  Rejected: {
-    icon: AlertTriangle,
-    color: "bg-red-500",
-  },
-  "Inspection Scheduled": {
-    icon: CalendarCheck,
-    color: "bg-orange-500",
-  },
-};
+import { Project } from "@/lib/data";
+import { FolderKanban, MapPin, Calendar, ArrowRight, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default function DashboardPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const [isSeeding, setIsSeeding] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const permitsQuery = useMemoFirebase(() => {
-    if (!user) return null;
-    return query(
-      collection(firestore, `users/${user.uid}/permits`)
-    );
-  }, [firestore, user]);
-
-  const {
-    data: permits,
-    isLoading: isPermitsLoading,
-    error: permitsError,
-  } = useCollection<Permit>(permitsQuery);
-  
-  const handleSeedDatabase = async () => {
-    if (!user) {
-      toast({
-        title: "Authentication Error",
-        description: "You must be logged in to seed the database.",
-        variant: "destructive",
-      });
-      return;
+  useEffect(() => {
+    async function fetchProjects() {
+      if (!user) return;
+      try {
+        const userProjects = await projectService.getUserProjects(firestore, user.uid);
+        setProjects(userProjects);
+      } catch (error) {
+        console.error(error);
+        toast({
+          title: "Error",
+          description: "Failed to load projects.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
-    setIsSeeding(true);
-    try {
-      await seedDatabase(firestore, user.uid);
-      toast({
-        title: "Database Seeded",
-        description: "Your application has been populated with sample data.",
-      });
-      // Data will refresh automatically via the useCollection hook
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Seeding Failed",
-        description: "Could not seed the database. Check console for errors.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSeeding(false);
-    }
-  };
+    if (user) fetchProjects();
+    else if (!isUserLoading) setIsLoading(false);
+  }, [user, firestore, isUserLoading, toast]);
 
-
-  if (isUserLoading || isPermitsLoading) {
+  if (isUserLoading || isLoading) {
     return <DashboardSkeleton />;
   }
 
-  if (permitsError) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-red-500">Error loading permits: {permitsError.message}</p>
-      </div>
-    );
-  }
-  
-  const stats = {
-    inReview: permits?.filter((p) => p.status === "In Review").length ?? 0,
-    approved: permits?.filter((p) => p.status === "Approved").length ?? 0,
-    rejected: permits?.filter((p) => p.status === "Rejected").length ?? 0,
-    inspectionScheduled:
-      permits?.filter((p) => p.status === "Inspection Scheduled").length ?? 0,
-  };
-
   return (
-    <div className="grid auto-rows-max items-start gap-4 lg:gap-8">
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>In Review</CardDescription>
-            <CardTitle className="text-4xl font-headline">
-              {stats.inReview}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs text-muted-foreground">
-              Permits currently under review.
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Approved</CardDescription>
-            <CardTitle className="text-4xl font-headline">
-              {stats.approved}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs text-muted-foreground">
-              Permits approved this month.
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Inspection Scheduled</CardDescription>
-            <CardTitle className="text-4xl font-headline">
-              {stats.inspectionScheduled}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs text-muted-foreground">
-              Upcoming inspections.
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Rejected</CardDescription>
-            <CardTitle className="text-4xl font-headline">
-              {stats.rejected}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs text-muted-foreground">
-              Requires attention.
-            </div>
-          </CardContent>
-        </Card>
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-headline font-bold">Your Projects</h1>
+          <p className="text-muted-foreground">Manage your active permit applications</p>
+        </div>
+        <Button asChild>
+          <Link href="/checklist-generator">
+            <Sparkles className="mr-2 h-4 w-4" />
+            New Project
+          </Link>
+        </Button>
       </div>
-       {!permits || permits.length === 0 ? (
-          <Card>
-             <CardHeader>
-                <CardTitle>Welcome to PermitPilot!</CardTitle>
-                <CardDescription>
-                It looks like you don't have any data yet. Populate your application with sample permits and municipalities to get started.
+
+      {!projects || projects.length === 0 ? (
+        <Card className="border-dashed border-2">
+          <CardHeader className="text-center py-12">
+            <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <FolderKanban className="h-6 w-6 text-primary" />
+            </div>
+            <CardTitle>No projects yet</CardTitle>
+            <CardDescription className="max-w-sm mx-auto">
+              Start by using our AI Assistant to generate a permit checklist for your project.
+            </CardDescription>
+            <div className="mt-6">
+              <Button asChild variant="outline">
+                <Link href="/checklist-generator">Get Started</Link>
+              </Button>
+            </div>
+          </CardHeader>
+        </Card>
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project) => (
+            <Card key={project.id} className="group hover:border-primary/50 transition-colors">
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                  <Badge variant="outline" className="mb-2 uppercase tracking-wider text-[10px]">
+                    {project.projectType.replace('_', ' ')}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground">
+                    {new Date(project.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <CardTitle className="group-hover:text-primary transition-colors">
+                  {project.name}
+                </CardTitle>
+                <CardDescription className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {project.address.city}, {project.address.state}
                 </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Button onClick={handleSeedDatabase} disabled={isSeeding}>
-                    {isSeeding ? (
-                        <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Seeding...
-                        </>
-                    ) : (
-                        <>
-                        <DatabaseZap className="mr-2 h-4 w-4" />
-                        Seed Database
-                        </>
-                    )}
-                </Button>
-            </CardContent>
-          </Card>
-        ) : (
-      <Card>
-        <CardHeader>
-          <CardTitle>Permit Status</CardTitle>
-          <CardDescription>
-            An overview of all your permit applications.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                <TableHead>Project Name</TableHead>
-                <TableHead>Permit Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>City</TableHead>
-                <TableHead>Submitted</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {permits && permits.length > 0 ? (
-                permits.map((permit) => (
-                  <TableRow key={permit.id}>
-                    <TableCell className="font-medium">
-                      {permit.projectName}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{permit.permitType}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 rounded-full ${
-                            statusConfig[permit.status]?.color ?? "bg-gray-400"
-                          }`}
-                        />
-                        {permit.status}
-                      </div>
-                    </TableCell>
-                    <TableCell>{permit.city}</TableCell>
-                    <TableCell>{permit.submittedDate}</TableCell>
-                    <TableCell>
-                      {permit.status === "Inspection Scheduled" && (
-                        <Button size="sm" variant="outline">
-                          <CalendarCheck className="mr-2 h-4 w-4" />
-                          Add to Calendar
-                        </Button>
-                      )}
-                      {permit.status === "Approved" && (
-                        <Button size="sm" variant="outline">
-                          View Documents
-                        </Button>
-                      )}
-                      {permit.status === "Rejected" && (
-                        <Button size="sm" variant="destructive">
-                          Review Errors
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center">
-                    No permits found.
-                  </TableCell>
-                </TableRow>
-              )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Calendar className="h-3 w-3" />
+                    <span>Created {new Date(project.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <Button size="sm" variant="ghost" className="group-hover:translate-x-1 transition-transform">
+                    View <ArrowRight className="ml-2 h-3 w-3" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );
